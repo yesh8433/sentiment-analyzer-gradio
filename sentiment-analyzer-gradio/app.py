@@ -28,7 +28,7 @@ pc = Pinecone(api_key=api_key)
 # Access your specific index
 # Assuming "fb-comments-q4h4rly" is the name of your Pinecone index.
 # You can also get this from an environment variable:
-index_name = os.getenv("PINECONE_INDEX_NAME", "fb-comments-q4h4rly") # Default to your index name
+index_name = os.getenv("PINECONE_INDEX_NAME", "fb-comments") # Default to your index name
 index = pc.Index(index_name)
 
 def analyze(raw_query_json: str) -> str:
