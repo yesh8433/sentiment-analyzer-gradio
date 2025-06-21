@@ -6,9 +6,9 @@ import pinecone
 # 1) Initialize Pinecone from environment variables
 pinecone.init(
     api_key=os.getenv("pcsk_2indG_7bikinqpKq6rseXDUYfWgbrNvjFEMvmSXt96tT6HQxejv76tpacdmm4N7jVoreK"),
-    environment=os.getenv("aped-4627-b74a.pinecone.io")
+    environment=os.getenv("aped-4627-b74a")
 )
-index = pinecone.Index(os.getenv("fb-comments-q4h4rly.svc"))
+index = pinecone.Index(os.getenv("fb-comments-q4h4rly"))
 def analyze(raw_query_json: str) -> str:
     try:
         payload = json.loads(raw_query_json)
