@@ -9,12 +9,13 @@ pinecone.init(
     environment=os.getenv("aped-4627-b74a.pinecone.io")
 )
 index = pinecone.Index(os.getenv("fb-comments-q4h4rly.svc"))
-try:
-    payload = json.loads(raw_query_json)
-    resp = index.query(**payload)
-    return resp["matches"][0]["metadata"]["sentiment"]
-except Exception as e:
-    return f"Error: {e}"
+def analyze(raw_query_json: str) -> str:
+    try:
+        payload = json.loads(raw_query_json)
+        resp = index.query(**payload)
+        return resp["matches"][0]["metadata"]["sentiment"]
+    except Exception as e:
+        return f"Error: {e}"
 # 3) Build the Gradio interface
 demo = gr.Interface(
     fn=analyze,
