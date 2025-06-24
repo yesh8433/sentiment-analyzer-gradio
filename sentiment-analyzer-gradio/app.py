@@ -1,94 +1,82 @@
 import os
 import json
-import openai
+from openai import OpenAI
 import gradio as gr
-from pinecone import Pinecone # Keep this import for the main client
+from pinecone import Pinecone
 
 # ── CONFIGURE KEYS & CLIENTS ───────────────────────────────────────────────
-# Load OpenAI key
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# Check if OpenAI API key is set
-if not openai.api_key:
+# Get OpenAI API key from environment
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
     print("OPENAI_API_KEY environment variable not found. Please set it for production!")
-    # For local testing, you might temporarily hardcode here, but REMOVE FOR PRODUCTION
-    # openai.api_key = "sk-proj-YOUR_ACTUAL_OPENAI_KEY_HERE"
+    raise ValueError("OPENAI_API_KEY is required")
 
-# 1) Initialize Pinecone
+# Initialize OpenAI client
+openai_client = OpenAI(api_key=openai_api_key)
+
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "fb-comments")
-
-# --- IMPORTANT CHANGE HERE ---
-# Pinecone environment/host are now typically provided during Pinecone() initialization
-# or are automatically inferred for serverless indexes.
-# If your index is serverless, you might not need 'environment' or 'host' explicitly here.
-# If you are using a Pod-based index, ensure PINECONE_ENVIRONMENT is set as a secret.
-PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT") # e.g., "us-east-1-aws"
+PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
 
 if not PINECONE_API_KEY:
     print("PINECONE_API_KEY environment variable not found. Using hardcoded value for testing. Please set it for production!")
-    PINECONE_API_KEY = "pcsk_2indG_7bikinqpKq6rseXDUYfWgbrNvjFEMvmSXt96tT6HQxejv76tpacdmm4N7jVoreK" # REMOVE THIS FOR PRODUCTION
+    PINECONE_API_KEY = "pcsk_2indG_7bikinqpKq6rseXDUYfWgbrNvjFEMvmSXt96tT6HQxejv76tpacdmm4N7jVoreK"
 
-# Initialize the main Pinecone client
-# For Pinecone client v3.x.x+, you initialize Pinecone first, then get the index from it.
-pc = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT) # Pass environment if you have it
-
-# Get the specific index instance
-# --- IMPORTANT CHANGE HERE ---
-# Access the index via the Pinecone client object.
+pc = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_ENVIRONMENT)
 index = pc.Index(PINECONE_INDEX_NAME)
 
-# --- Helper Function to get Embeddings from OpenAI ---
 def get_embedding(text: str, model="text-embedding-ada-002") -> list[float]:
-    """
-    Generates an embedding for the given text using OpenAI's API.
-    """
-    if not text: # Handle empty text gracefully
+    if not text:
         return []
     try:
-        response = openai.embeddings.create(input=[text], model=model)
+        response = openai_client.embeddings.create(input=[text], model=model)
         return response.data[0].embedding
     except Exception as e:
         print(f"Error getting embedding from OpenAI: {e}")
-        raise # Re-raise to propagate the error if necessary
+        raise
 
-# --- New Function to get Sentiment and Themes from OpenAI GPT-3.5-TURBO ---
 def get_sentiment_and_themes_from_openai(text: str) -> tuple[str, list[str]]:
-    """
-    Analyzes sentiment and extracts themes from text using OpenAI's GPT-3.5-TURBO.
-    """
     if not text:
         return "N/A", []
     try:
-        response = openai.ChatCompletion.create(
+        response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a sentiment analysis AI. Analyze the sentiment (positive, neutral, negative) and identify key themes (up to 3 words each) from the following user comment. Respond ONLY with a JSON object in this exact format: {\"sentiment\":\"[sentiment_label]\",\"themes\":[\"theme1\",\"theme2\"]}. If no clear themes, use an empty array. If the comment is very short or ambiguous, categorize as neutral. Do not add any other text outside the JSON."},
                 {"role": "user", "content": f"Comment: {text}"}
             ],
-            temperature=0.0 # Keep low for consistent JSON output
+            temperature=0.1
         )
         
-        sentiment_json_str = response['choices'][0]['message']['content']
+        # --- ADDED DEBUGGING PRINTS HERE ---
+        print(f"Raw OpenAI ChatCompletion response: {response}")
+        
+        sentiment_json_str = response.choices[0].message.content
+        print(f"String to parse as JSON: {sentiment_json_str}")
+        
+        # Attempt to parse
         sentiment_data = json.loads(sentiment_json_str)
         
         sentiment = sentiment_data.get("sentiment", "Sentiment not found")
         themes = sentiment_data.get("themes", [])
         return sentiment, themes
-    except (json.JSONDecodeError, KeyError, Exception) as e:
-        print(f"Error processing sentiment/themes with GPT-3.5-TURBO: {e}")
-        return "Error: Could not analyze sentiment", []
+            
+    except (json.JSONDecodeError, KeyError) as e:
+        print(f"JSON Parsing Error or Key Missing: {type(e).__name__}: {e}")
+        if isinstance(e, json.JSONDecodeError):
+            print(f"Problematic JSON string: {sentiment_json_str}")
+        return "Error: Could not analyze sentiment (JSON parse/key error)", []
+    except Exception as e:
+        print(f"General Error during OpenAI ChatCompletion: {type(e).__name__}: {e}")
+        return "Error: Could not analyze sentiment (general error)", []
 
-# --- MODIFIED ANALYZE FUNCTION to include direct sentiment and themes ---
 def analyze_comment(comment_text: str) -> tuple[str, str, str]:
     if not comment_text:
         return "Please enter a comment.", "N/A", "N/A"
 
-    # --- 1. Get Sentiment and Themes for the CURRENT typed comment ---
     current_sentiment, current_themes = get_sentiment_and_themes_from_openai(comment_text)
     current_themes_str = ", ".join(current_themes) if current_themes else "No themes identified."
 
-    # --- 2. (Optional) Get Embedding and Search Pinecone for similar comments ---
     similar_comments_info = ""
     try:
         embedding = get_embedding(comment_text)
@@ -122,7 +110,6 @@ def analyze_comment(comment_text: str) -> tuple[str, str, str]:
 
     return f"Sentiment: {current_sentiment}", f"Themes: {current_themes_str}", similar_comments_info
 
-# --- MODIFIED GRADIO INTERFACE ---
 demo = gr.Interface(
     fn=analyze_comment,
     inputs=gr.Textbox(
