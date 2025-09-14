@@ -114,16 +114,16 @@ demo = gr.Interface(
     fn=analyze_comment,
     inputs=gr.Textbox(
         lines=5,
-        placeholder='Enter a comment to analyze its sentiment and find similar ones...',
+        placeholder='Enter a comment to analyze its emotion and find similar ones...',
         label="Comment Text"
     ),
     outputs=[
-        gr.Textbox(label="Sentiment of Typed Comment"),
+        gr.Textbox(label="Emotion of Typed Comment"),
         gr.Textbox(label="Themes of Typed Comment"),
         gr.Textbox(label="Similar Comments from Pinecone")
     ],
-    title="🎯 Comment Sentiment & Similarity Analyzer",
-    description="Enter a comment to get its real-time sentiment and themes. The app will also search for similar comments stored in Pinecone."
+    title="🎯 Comment Emotion & Similarity Analyzer",
+    description="Enter a comment to get its real-time emotion and themes. The app will also search for similar comments stored in Pinecone."
 )
 
 if __name__ == "__main__":
